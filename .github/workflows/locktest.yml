@@ -1,0 +1,18 @@
+name: locktest
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Context
+        run: echo "event=${{ github.event_name }} ref=${{ github.ref }} sha=${{ github.sha }}"
+      - name: Push a lock ref with GITHUB_TOKEN
+        run: |
+          SHA=$(git rev-parse HEAD)
+          if git push --force-with-lease=refs/locks/ci-test: origin "$SHA:refs/locks/ci-test"; then echo PUSH_OK; else echo PUSH_FAILED; fi
+          if git push origin ":refs/locks/ci-test"; then echo DELETE_OK; else echo DELETE_FAILED; fi
