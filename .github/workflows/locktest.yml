@@ -1,6 +1,8 @@
 name: locktest
 on:
   push:
+    branches-ignore:
+      - 'ci-results/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -9,10 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Context
-        run: echo "event=${{ github.event_name }} ref=${{ github.ref }} sha=${{ github.sha }}"
-      - name: Push a lock ref with GITHUB_TOKEN
+      - name: probe and report
         run: |
+          set +e
+          git config user.name ci
+          git config user.email ci@example.invalid
+          R="event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF} sha=${GITHUB_SHA} run=${GITHUB_RUN_ID}"
           SHA=$(git rev-parse HEAD)
-          if git push --force-with-lease=refs/locks/ci-test: origin "$SHA:refs/locks/ci-test"; then echo PUSH_OK; else echo PUSH_FAILED; fi
-          if git push origin ":refs/locks/ci-test"; then echo DELETE_OK; else echo DELETE_FAILED; fi
+          OUT=$(git push --force-with-lease=refs/locks/ci-test: origin "$SHA:refs/locks/ci-test" 2>&1)
+          if [ $? -eq 0 ]; then P="LOCK_PUSH=OK"; else P="LOCK_PUSH=FAILED $(echo "$OUT" | tr '\n' ' ' | cut -c1-300)"; fi
+          OUT=$(git push origin ":refs/locks/ci-test" 2>&1)
+          if [ $? -eq 0 ]; then D="LOCK_DELETE=OK"; else D="LOCK_DELETE=FAILED $(echo "$OUT" | tr '\n' ' ' | cut -c1-300)"; fi
+          C=$(git commit-tree HEAD^{tree} -p HEAD -m "$R $P $D")
+          git push origin "$C:refs/heads/ci-results/${GITHUB_RUN_ID}"
